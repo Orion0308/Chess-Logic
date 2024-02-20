@@ -2,7 +2,14 @@
 #include <iostream>
 #include <map>
 #include <ranges>
+#include <sstream>
 #include <utility>
+#include <limits>
+
+int MoveCount = 0;
+int AttackerX;
+int AttackerY;
+
 enum class PieceType {
   KING,
   QUEEN,
@@ -19,15 +26,22 @@ enum class PieceColour {
   NONE,
 };
 
+enum class EnPassant {
+  TRUE,
+  FALSE,
+};
+
 struct Piece {
   PieceType type = PieceType::EMPTY;
   PieceColour colour = PieceColour::NONE;
+  EnPassant enp = EnPassant::FALSE;
 };
 
-int MoveCount = 0;
+Piece PreviousBoardState[8][8];
 
 class ChessBoard {
-private:
+
+public:
   Piece board[8][8];
   std::map<PieceType, std::string> PieceTypeToString = {
       {PieceType::KING, "K"},   {PieceType::QUEEN, "Q"},
@@ -42,7 +56,6 @@ private:
       {PieceColour::NONE, "X"},
   };
 
-public:
   ChessBoard() {
 
     static constexpr Piece HomeRow[8] = {
@@ -65,18 +78,18 @@ public:
     return;
   }
 
-  void printboard() {
+  void printboard(Piece boardx[8][8]) {
     for (int x = 0; x < 8; x++) {
       for (int y = 0; y < 8; y++) {
 
-        std::cout << PieceTypeToString[board[x][y].type];
-        std::cout << PieceColourToString[board[x][y].colour] << " ";
+        std::cout << PieceTypeToString[boardx[x][y].type];
+        std::cout << PieceColourToString[boardx[x][y].colour] << " ";
       }
       std::cout << std::endl;
     }
   }
 
-  Piece getPieceAt(int x, int y) const { return board[x][y]; }
+  Piece &getPieceAt(int x, int y) { return board[x][y]; }
 
   void setPieceAt(int x, int y, const Piece &piece) { board[x][y] = piece; }
 
@@ -133,8 +146,7 @@ std::pair<int, int> FindKingBlack(ChessBoard &chessBoard) {
   return std::make_pair(-1, -1);
 }
 
-bool CheckDiagonals(int x1, int x2, int y1, int y2,
-                    const ChessBoard &chessBoard) {
+bool CheckDiagonals(int x1, int x2, int y1, int y2, ChessBoard &chessBoard) {
 
   const int xSteps = abs(x2 - x1);
   const int ySteps = abs(y2 - y1);
@@ -146,7 +158,7 @@ bool CheckDiagonals(int x1, int x2, int y1, int y2,
 
   const auto xDirection = (x2 - x1 > 0) ? 1 : -1;
   const auto yDirection = (y2 - y1 > 0) ? 1 : -1;
-  const auto source = chessBoard.getPieceAt(x1, y1);
+  Piece source = chessBoard.getPieceAt(x1, y1);
   for (int i = 1; i < xSteps; i++) {
 
     if (ySteps == 1) {
@@ -155,14 +167,14 @@ bool CheckDiagonals(int x1, int x2, int y1, int y2,
 
     int x = x1 + i * xDirection;
     int y = y1 + i * yDirection;
-    auto CheckSpace = chessBoard.getPieceAt(x, y);
+    Piece CheckSpace = chessBoard.getPieceAt(x, y);
 
     if (i <= xSteps - 1 && CheckSpace.type != PieceType::EMPTY) {
 
       return false;
     }
   }
-  const Piece destination = chessBoard.getPieceAt(x2, y2);
+  Piece destination = chessBoard.getPieceAt(x2, y2);
   if (destination.type != PieceType::EMPTY &&
       destination.colour == source.colour) {
 
@@ -302,21 +314,37 @@ bool KingMove(int x1, int x2, int y1, int y2, ChessBoard &chessBoard) {
 }
 
 bool PawnMove(int x1, int x2, int y1, int y2, ChessBoard &chessBoard) {
-  Piece source = chessBoard.getPieceAt(x1, y1);
+  Piece &source = chessBoard.getPieceAt(x1, y1);
   Piece destination = chessBoard.getPieceAt(x2, y2);
-
+  Piece Empty;
+  Empty.type = PieceType::EMPTY;
+  Empty.colour = PieceColour::NONE;
   const int xSteps = (x2 - x1);
   const int ySteps = (y2 - y1);
   bool isHome = ((x1 == 6 && source.colour == PieceColour::BLACK) ||
                  (x1 == 1 && source.colour == PieceColour::WHITE))
                     ? true
                     : false;
+if (abs(xSteps) == 1 && abs(ySteps) == 1 && destination.type == PieceType::EMPTY) {
+    int targetSquareY = y1 + ySteps;
+    if (targetSquareY >= 0 && targetSquareY < 8) {
+        Piece targetPiece = chessBoard.getPieceAt(x1, targetSquareY);
 
+        if (targetPiece.enp == EnPassant::TRUE && targetPiece.colour != source.colour) { 
+            chessBoard.setPieceAt(x1,targetSquareY,Empty);
+            return true;
+        }
+    }
+}
   if ((abs(xSteps) == 2) && (isHome) && (ySteps == 0)) {
+
     return CheckVerticals(x1, x2, y1, y2, chessBoard);
+
   } else if ((abs(xSteps) == 1 && ySteps == 0) &&
              destination.type == PieceType::EMPTY) {
+
     return true;
+
   } else if ((abs(xSteps) == 1 && abs(ySteps) == 1) &&
              (destination.colour != source.colour &&
               destination.colour != PieceColour::NONE)) {
@@ -397,7 +425,6 @@ bool isSpaceUnderAttack(int x, int y, ChessBoard &chessBoard) {
   Piece Friendly;
   Friendly.colour = WhoMove() ? PieceColour::WHITE : PieceColour::BLACK;
   std::string colour = WhoMove() ? "WHITE" : "BLACK";
-
   for (int i = 0; i < 8; i++) {
     for (int j = 0; j < 8; j++) {
 
@@ -405,7 +432,8 @@ bool isSpaceUnderAttack(int x, int y, ChessBoard &chessBoard) {
 
       if (MoveCheck(i, j, x, y, chessBoard) &&
           (Attacker.colour != Friendly.colour)) {
-
+        AttackerX = i;
+        AttackerY = j;
         return true; // XY is Under attack
       }
     }
@@ -422,12 +450,89 @@ bool isInCheck(ChessBoard &chessBoard) {
   return false; // King Isnt in Check
 }
 
+bool CanBeBlocked(ChessBoard &chessBoard) {
+  // Attackers location
+  int x = AttackerX;
+  int y = AttackerY;
+  auto [KingX, KingY] =
+      WhoMove() ? FindKingWhite(chessBoard) : FindKingBlack(chessBoard);
+  int xDirection = (x > KingX) ? -1 : 1;
+  int yDirection = (y > KingY) ? -1 : 1;
+  int Xdifference = abs(x - KingX);
+  int Ydifference = abs(y - KingY);
+
+  Piece FreindlyColour;
+  FreindlyColour.colour = WhoMove() ? PieceColour::WHITE : PieceColour::BLACK;
+  std::cout << "\n\nThreatening piece: " << x << "," << y
+            << " is trying to attack King at: " << KingX << "," << KingY
+            << "\nX direction and Ydirection: " << xDirection << ","
+            << yDirection << "\nX and Y Difference: " << Xdifference << ","
+            << Ydifference << "\n\n";
+  if (x == KingX) {
+
+    for (int i = 1; i <= Ydifference; i++) {
+      for (int row = 0; row < 8; row++) {
+        for (int col = 0; col < 8; col++) {
+          Piece rowcol = chessBoard.getPieceAt(row, col);
+          std::cout << "checking if " << row << "," << col << " Can attack "
+                    << x << "," << y + i * yDirection << "\n";
+          if (MoveCheck(row, col, x, y + i * yDirection, chessBoard) &&
+              rowcol.colour == FreindlyColour.colour) {
+            std::cout << "CHECKMATE CAN BE BLOCKED\n";
+            return true;
+          }
+        }
+      }
+    }
+
+  } else if (y == KingY) {
+
+    for (int i = 1; i <= Xdifference; i++) {
+      for (int row = 0; row < 8; row++) {
+        for (int col = 0; col < 8; col++) {
+          Piece rowcol = chessBoard.getPieceAt(row, col);
+          std::cout << "checking if " << row << "," << col << " Can attack "
+                    << x + i * xDirection << "," << y << "\n";
+          if (MoveCheck(row, col, x + i * xDirection, y, chessBoard) &&
+              rowcol.colour == FreindlyColour.colour) {
+            std::cout << "CHECKMATE CAN BE BLOCKED\n";
+            return true;
+          }
+        }
+      }
+    }
+  } else if (x != KingX && y != KingY) {
+    std::cout << "RUNNING THIS\n\n";
+    for (int i = 1; i <= Xdifference; i++) {
+      for (int row = 0; row < 8; row++) {
+        for (int col = 0; col < 8; col++) {
+          Piece rowcol = chessBoard.getPieceAt(row, col);
+          std::cout << "checking if " << row << "," << col << " Can attack "
+                    << x + i * xDirection << "," << y + i * yDirection << "\n";
+          if (MoveCheck(row, col, x + i * xDirection, y + i * yDirection,
+                        chessBoard) &&
+              rowcol.colour == FreindlyColour.colour) {
+            std::cout << "Checkmate can be blocked\n";
+            return true;
+          }
+        }
+      }
+    }
+  }
+  std::cout << "Checkmate cant be blocked\n";
+  return false;
+}
+
 bool isCheckmate(ChessBoard &ChessBoard) {
 
   auto [KingX, KingY] =
       WhoMove() ? FindKingWhite(ChessBoard) : FindKingBlack(ChessBoard);
   Piece King = ChessBoard.getPieceAt(KingX, KingY);
   if (!isInCheck(ChessBoard)) {
+    return false;
+  }
+  if (CanBeBlocked(ChessBoard)) {
+    std::cout << "CAN BE BLOCKED\n\n\n\n\n";
     return false;
   }
   for (int i = -1; i < 2; i++) {
@@ -488,27 +593,55 @@ bool CastlingMoveLegality(int x1, int x2, int y1, int y2,
   return true;
 }
 
-#include <limits> // For dealing with invalid input
-
-#include <limits>
-
 void getPlayerMove(int &x1, int &x2, int &y1, int &y2) {
-    while (true) { 
-        std::cout << "Enter Your Move (x1,y1),(x2,y2):";
-        std::cin >> x1 >> y1 >> x2 >> y2;
+  while (true) {
+    std::cout << "Enter Your Move (x1,y1),(x2,y2): ";
 
-        if (std::cin.fail() || x1 < 0 || x1 > 7 || y1 < 0 || y1 > 7 || x2 < 0 ||
-        x2 > 7 || y2 < 0 || y2 > 7) {
-            std::cout << "Invalid input. Please enter coordinates within the board (0-7)." << std::endl;
-            std::cin.clear(); 
-            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); 
-        } else {
-            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n'); // Added line
-            break; 
-        }
+    // Read the entire line of input
+    std::string line;
+    if (!std::getline(std::cin, line)) {
+      // Handle potential end-of-file conditions or read errors
+      std::cout << "Error reading input. Please try again." << std::endl;
+      continue;
     }
+
+    // Use a stringstream to attempt parsing
+    std::stringstream ss(line);
+    if (ss >> x1 >> y1 >> x2 >> y2) {
+      // Process input in the same way as before...
+      if (0 <= x1 && x1 <= 7 && 0 <= y1 && y1 <= 7 && 0 <= x2 && x2 <= 7 &&
+          0 <= y2 && y2 <= 7) {
+        break;
+      } else {
+        std::cout << "Invalid input. Coordinates must be between 0 and 7."
+                  << std::endl;
+      }
+    } else {
+      std::cout << "Invalid input. Please enter four integers." << std::endl;
+    }
+  }
 }
 
+bool StillInCheck(ChessBoard chessBoard, int x1, int x2, int y1, int y2) {
+
+  Piece Empty;
+  Empty.type = PieceType::EMPTY;
+  Empty.colour = PieceColour::NONE;
+  Piece source = chessBoard.getPieceAt(x1, y1);
+  if (CanBeBlocked(chessBoard)) {
+
+    chessBoard.setPieceAt(x2, y2, source);
+    chessBoard.setPieceAt(x1, y1, Empty);
+    if (isInCheck(chessBoard)) {
+      std::cout << "HERE IS UR ERROR DUNBASS\n\n";
+      chessBoard.setPieceAt(x2, y2, Empty);
+      chessBoard.setPieceAt(x1, y1, source);
+      std::cout << "King would still be in check!\n";
+      return true;
+    }
+  }
+  return false;
+}
 
 bool doMove(ChessBoard &chessBoard) {
   int x1, x2, y1, y2;
@@ -520,7 +653,6 @@ bool doMove(ChessBoard &chessBoard) {
   Piece destination = chessBoard.getPieceAt(x2, y2);
 
   Piece Empty;
-
   Empty.type = PieceType::EMPTY;
   Empty.colour = PieceColour::NONE;
 
@@ -540,6 +672,10 @@ bool doMove(ChessBoard &chessBoard) {
     return false;
   }
 
+  if (isInCheck(chessBoard) && StillInCheck(chessBoard, x1, x2, y1, y2)) {
+    return false;
+  }
+
   switch (source.type) {
   case PieceType::PAWN:
 
@@ -552,11 +688,12 @@ bool doMove(ChessBoard &chessBoard) {
     }
 
     if (MoveCheck(x1, y1, x2, y2, chessBoard)) {
+      if (abs(x2 - x1) == 2) {
+        source.enp = EnPassant::TRUE;
+      }
       chessBoard.setPieceAt(x2, y2, source);
       chessBoard.setPieceAt(x1, y1, Empty);
       MoveCount++;
-    } else {
-      return false;
     }
     break;
 
@@ -565,8 +702,6 @@ bool doMove(ChessBoard &chessBoard) {
       chessBoard.setPieceAt(x2, y2, source);
       chessBoard.setPieceAt(x1, y1, Empty);
       MoveCount++;
-    } else {
-      return false;
     }
     break;
 
@@ -575,8 +710,6 @@ bool doMove(ChessBoard &chessBoard) {
       chessBoard.setPieceAt(x2, y2, source);
       chessBoard.setPieceAt(x1, y1, Empty);
       MoveCount++;
-    } else {
-      return false;
     }
     break;
 
@@ -593,14 +726,14 @@ bool doMove(ChessBoard &chessBoard) {
       }
 
       MoveCount++;
-
-    } else {
-      return false;
     }
     break;
 
   case PieceType::KING:
-
+    if (isSpaceUnderAttack(x2, y2, chessBoard)) {
+      std::cout << "That space is under attack\n\n";
+      return false;
+    }
     if ((y2 == 7 || y2 == 0) &&
         CastlingMoveLegality(x1, x2, y1, y2, chessBoard)) {
       chessBoard.setPieceAt(x1, y1, Empty);
@@ -617,8 +750,6 @@ bool doMove(ChessBoard &chessBoard) {
                                           : chessBoard.HasBlackKingMoved = true;
 
       MoveCount++;
-    } else {
-      return false;
     }
     break;
 
@@ -627,31 +758,61 @@ bool doMove(ChessBoard &chessBoard) {
       chessBoard.setPieceAt(x2, y2, source);
       chessBoard.setPieceAt(x1, y1, Empty);
       MoveCount++;
-    } else {
-      return false;
     }
     break;
-
-  default:
-    return false;
   }
 
   return false;
 }
 
-int mainy() {
+auto SaveBoardState(ChessBoard &chessBoard) {
+
+  for (int i = 0; i < 8; i++) {
+    for (int j = 0; j < 8; j++) {
+      PreviousBoardState[i][j] = chessBoard.getPieceAt(i, j);
+    }
+  }
+  return PreviousBoardState;
+}
+
+void ResetEnPassant(ChessBoard &chessBoard) {
+  for (int i = 0; i < 8; i++) {
+    Piece &piece = chessBoard.getPieceAt(
+        i, WhoMove() ? 3 : 4); // Check the relevant rank
+
+    if (piece.type == PieceType::PAWN) {
+      piece.enp = EnPassant::FALSE; // Reset en passant for the relevant pawns
+    }
+  }
+}
+
+int main() {
 
   ChessBoard chessBoard;
-  chessBoard.printboard();
+  chessBoard.printboard(chessBoard.board);
+  SaveBoardState(chessBoard);
+
   while (true) {
 
     std::string TurnMsg = WhoMove() ? "Whites Turn" : "Blacks Turn";
     std::cout << TurnMsg << "\n";
+    SaveBoardState(chessBoard);
     doMove(chessBoard);
+    for (int i = 0; i < 8; i++) {
+      for (int j = 0; j < 8; j++) {
+        Piece &piece = chessBoard.getPieceAt(i, j);
+        if (piece.enp == EnPassant::TRUE) {
+          std::cout << "\n\nENP DETECTED AT: " << i << "," << j << "\n\n";
+        }
+      }
+    }
+    ResetEnPassant(chessBoard);
+
     if (isCheckmate(chessBoard)) {
       std::cout << "CHECKMATE\n";
       return false;
     }
-    chessBoard.printboard();
+    ResetEnPassant(chessBoard);
+    chessBoard.printboard(chessBoard.board);
   }
 }
