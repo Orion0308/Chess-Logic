@@ -1,1 +1,1 @@
-If you have any updates/fixes please feel free to share.
+run cmake in build folder --> run make --> ./main
